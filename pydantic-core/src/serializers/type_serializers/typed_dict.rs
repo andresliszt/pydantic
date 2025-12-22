@@ -14,7 +14,9 @@ use crate::serializers::SerializationState;
 use crate::serializers::shared::TypeSerializer;
 use crate::tools::SchemaDict;
 
-use super::{BuildSerializer, CombinedSerializer, ComputedFields, FieldsMode, GeneralFieldsSerializer, SerField};
+use super::{
+    BuildSerializer, CombinedSerializer, ComputedFields, ExtraSerFields, FieldsMode, GeneralFieldsSerializer, SerField,
+};
 
 #[derive(Debug)]
 pub struct TypedDictSerializer {
@@ -46,12 +48,21 @@ impl BuildSerializer for TypedDictSerializer {
         let fields_dict: Bound<'_, PyDict> = schema.get_as_req(intern!(py, "fields"))?;
         let mut fields: AHashMap<String, SerField> = AHashMap::with_capacity(fields_dict.len());
 
-        let extra_serializer = match (schema.get_item(intern!(py, "extras_schema"))?, &fields_mode) {
-            (Some(v), FieldsMode::TypedDictAllow) => {
-                Some(CombinedSerializer::build(&v.extract()?, config, definitions)?)
+        let extras: Option<Bound<'_, PyDict>> = schema.get_as(intern!(py, "extras_schema"))?;
+        let extra_fields: Option<ExtraSerFields> = if let Some(extras) = extras {
+            if fields_mode != FieldsMode::TypedDictAllow {
+                return py_schema_err!("extras_schema can only be used if extra_behavior=allow");
             }
-            (Some(_), _) => return py_schema_err!("extras_schema can only be used if extra_behavior=allow"),
-            (_, _) => None,
+            let extras_serialization_exclude_if: Option<Py<PyAny>> =
+                extras.get_as(intern!(py, "serialization_exclude_if"))?;
+            let extras_serializer = extras
+                .get_item(intern!(py, "schema"))?
+                .map(|v| CombinedSerializer::build(&v.extract()?, config, definitions))
+                .transpose()?;
+
+            Some(ExtraSerFields::new(extras_serializer, extras_serialization_exclude_if))
+        } else {
+            None
         };
 
         for (key, value) in fields_dict {
@@ -92,10 +103,9 @@ impl BuildSerializer for TypedDictSerializer {
         // FIXME: computed fields do not work for TypedDict, and may never
         // see the closed https://github.com/pydantic/pydantic-core/pull/1018
         let computed_fields = ComputedFields::new(schema, config, definitions)?;
-
         Ok(Arc::new(
             Self {
-                serializer: GeneralFieldsSerializer::new(fields, fields_mode, extra_serializer, computed_fields),
+                serializer: GeneralFieldsSerializer::new(fields, fields_mode, extra_fields, computed_fields),
             }
             .into(),
         ))
