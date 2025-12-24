@@ -3116,7 +3116,7 @@ class ModelFieldsSchema(TypedDict, total=False):
     model_name: str
     computed_fields: list[ComputedField]
     strict: bool
-    extras_schema: CoreSchema
+    extras_keys_schema: CoreSchema
     extras_schema: ExtrasSchema
     extra_behavior: ExtraBehavior
     from_attributes: bool
