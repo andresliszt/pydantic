@@ -1477,12 +1477,11 @@ class GenerateJsonSchema:
         if schema.get('extra_behavior') == 'forbid':
             json_schema['additionalProperties'] = False
         elif schema.get('extra_behavior') == 'allow':
+            json_schema['additionalProperties'] = True
             if 'extras_schema' in schema:
                 if 'schema' in schema['extras_schema']:
                     if schema['extras_schema']['schema'] != {'type': 'any'}:
                         json_schema['additionalProperties'] = self.generate_inner(schema['extras_schema']['schema'])
-            else:
-                json_schema['additionalProperties'] = True
 
         if cls is not None:
             # `_update_class_schema()` will not override
